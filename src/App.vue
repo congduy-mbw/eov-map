@@ -42,7 +42,7 @@ function onAddLayerByConfig(lng, lat, doCao, roll, pitch, yaw){
         renderingMode: '3d',
         onAdd: function () {
             const options = {
-                obj: './public/file-1571059202690.glb', //
+                obj: '/file-1571059202690.glb', //./public/file-1571059202690.glb
                 type: 'gltf',
                 scale: 50,
                 units: 'meters',

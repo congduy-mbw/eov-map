@@ -6,7 +6,7 @@ const mapRef = ref(null)
 const lngRef = ref(105.8522308815123)
 const latRef = ref(21.027864986832427)
 const doCaoRef = ref(100)
-const rollRef = ref(50)
+const rollRef = ref(0)
 const pitchRef = ref(90)
 const yallRef = ref(180)
 const modelRef = ref(null)
@@ -35,7 +35,7 @@ onMounted(() => {
   });
 })
 
-function onAddLayerByConfig(lng, lat, doCao, roll, pitch, yall){
+function onAddLayerByConfig(lng, lat, doCao, roll, pitch, yaw){
     mapRef.value.addLayer({
         id: 'custom-threebox-model',
         type: 'custom',
@@ -52,7 +52,7 @@ function onAddLayerByConfig(lng, lat, doCao, roll, pitch, yall){
 
             tb.loadObj(options, (model) => {
                 model.setCoords([lng, lat, doCao]);
-                model.setRotation({ x: pitch, y: -yall, z: roll });
+                model.setRotation({ x: pitch, y: yaw, z: roll});
                 modelRef.value = model;
                 tb.add(model);
             });
@@ -93,8 +93,11 @@ function onApplyConfig(){
         <label class="label_t">Độ cao(m)</label><br>
         <input type="number" id="docao" style="width:100%;margin-bottom: 10px;" v-model="doCaoRef"/><br>
         <label class="label_t">Trạng thái quay(Roll, Pitch, Yaw)</label><br>
+        <label>Roll</label><br>
         <input type="number" id="roll" placeholder="Roll" style="width:100%;margin-bottom: 5px;"  v-model="rollRef"/><br>
+        <label>Pitch</label><br>
         <input type="number" id="pitch" placeholder="Pitch" style="width:100%;margin-bottom: 5px;"  v-model="pitchRef"/><br>
+        <label>Yaw</label><br>
         <input type="number" id="yall" placeholder="Yaw" style="width:100%;margin-bottom: 5px;"  v-model="yallRef"/><br>
 
         <div style="width: 100%;margin-top: 15px;display: flex;justify-content: end;">

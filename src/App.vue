@@ -12,6 +12,10 @@ const modelRef = ref(null)
 
 const configRef = ref("manual")
 
+const arrLogPlane = ref([])
+const disableBtnMoPhong = ref(true)
+const lineRef = ref(null)
+
 onMounted(() => {
   mapboxgl.accessToken = 'pk.eyJ1IjoiZHV5ZGMiLCJhIjoiY2t2djUxZTl3MDFrNDJvbHU2eXd1YmkwdyJ9.EJMYZxWRlMshYpLlSEOmmg';
   mapRef.value =  new mapboxgl.Map({
@@ -85,6 +89,7 @@ function onApplyConfig(){
 function onChangeFileLog(evt){
     let file = evt.target.files[0];
     const reader = new FileReader();
+    disableBtnMoPhong.value = true;
     reader.onload = function(event){
         const lines = event.target.result.split(/\r?\n/);
         let arrByte = []
@@ -93,38 +98,99 @@ function onChangeFileLog(evt){
                 const match = line.match(/\*T02:\s*(.*)/);
                 if(match){
                     let base64Str = match[1];
-                    let decodedString = atob(base64Str);
-                    console.log(decodedString)
-                    // Nếu bạn muốn kiểm tra byte của kết quả, bạn có thể chuyển chuỗi này thành một mảng byte:
-                    var byteArray = new Uint8Array(decodedString.length);
-                    for (var i = 0; i < decodedString.length; i++) {
-                        byteArray[i] = decodedString.charCodeAt(i);
+                    const byteArray = base64ToBytes(base64Str);
+                    const time_ms = bytesToInt32(byteArray, 0);
+                    const elevator_scale = bytesToInt32(byteArray, 4);
+                    const lat_scale = bytesToInt32(byteArray, 8);
+                    const long_scale = bytesToInt32(byteArray, 12);
+                    const yaw_rad_scale = byteToInt16(byteArray, 16);
+                    const roll_rad_scale = byteToInt16(byteArray, 18);
+                    const pitch_rad_scale = byteToInt16(byteArray, 20);
+                    const elevator = elevator_scale/100;
+                    const lat = lat_scale/1000000;
+                    const lon = long_scale/1000000;
+                    const yaw_rad = yaw_rad_scale/1000;
+                    const roll_rad = roll_rad_scale/1000;
+                    const pitch_rad = pitch_rad_scale/1000;
+                    if(elevator > 0 && lon > 0 && lat > 0){
+                        let item = {
+                            'time_ms': time_ms,
+                            'lng': lon,
+                            'lat': lat,
+                            'elevator': elevator,
+                            'yaw': radianToDegree(yaw_rad),
+                            'roll': radianToDegree(roll_rad),
+                            'pitch': radianToDegree(pitch_rad)
+                        }
+                        arrLogPlane.value.push(item);
                     }
-                    console.log(byteArray);  // In ra mảng byte (dữ liệu nhị phân)
-                    console.log(byteArray.length);
                 }
             }
         });
+        disableBtnMoPhong.value = false;
     }
     reader.readAsText(file);
 }
 
-function convertBase64ToString(base64){
-    const binaryString = atob(base64); // Dùng atob để giải mã Base64
-    const byteArray = new Uint8Array(binaryString.length);
-
-    for (let i = 0; i < binaryString.length; i++) {
-    byteArray[i] = binaryString.charCodeAt(i);
+function base64ToBytes(base64){
+    const binaryString = atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for(let i = 0; i < len; i++){
+        bytes[i] = binaryString.charCodeAt(i);
     }
-
-    // Đọc nội dung từ mảng byte
-    const decoder = new TextDecoder('utf-8');
-    const text = decoder.decode(byteArray);
-    return text
+    return bytes;
 }
+
+function bytesToInt32(byteArray, index, littleEndian = true){
+    const view = new DataView(byteArray.buffer);
+    return littleEndian ? view.getInt32(index, true) : view.getInt32(index, false);
+}
+
+function byteToInt16(byteArray, index, littleEndian = true){
+    const view = new DataView(byteArray.buffer);
+    return littleEndian ? view.getInt16(index, true) : view.getInt16(index, false);
+}
+
+function radianToDegree(radian) {
+    return radian * (180 / Math.PI);
+}
+
 
 function onApplyFileLog(){
     console.log("Bắt đầu mô phỏng");
+    console.log(arrLogPlane.value);
+    if(mapRef.value.getLayer('custom-threebox-model')){
+        mapRef.value.removeLayer('custom-threebox-model');
+        tb.remove(modelRef.value);
+    }
+    addLayerLinePlane();
+}
+
+function addLayerLinePlane(){
+    let flightPlane = {
+        'type': "Feature",
+        'geometry': {
+            'coordinates': []
+        },
+        'properties': {}
+    }
+    let arrLineTurf = [];
+    for(let i = 0; i < arrLogPlane.value.length; i++){
+        let item = arrLogPlane.value[i];
+        flightPlane.geometry.coordinates.push([item['lng'], item['lat'], item['elevator']])
+        arrLineTurf.push([item['lng'], item['lat']])
+    }
+    var lineTurf = turf.lineString(arrLineTurf);
+    var bbox = turf.bbox(lineTurf);
+    console.log(flightPlane)
+    lineRef.value = tb.line({
+        geometry: flightPlane.geometry.coordinates,
+        width: 50,
+        color: 'red'
+    })
+    tb.add(lineRef.value);
+    mapRef.value.fitBounds(bbox)
 }
 </script>
 
@@ -160,7 +226,7 @@ function onApplyFileLog(){
             <label class="label_t">Chọn tệp nhật ký bay</label>
             <input type="file" id="log" name="log" accept=".txt" @change="onChangeFileLog"/>
             <div style="width: 100%;margin-top: 15px;display: flex;justify-content: end;">
-                <button @click="onApplyFileLog()">Mô phỏng</button>
+                <button @click="onApplyFileLog()" :disabled="disableBtnMoPhong">Mô phỏng</button>
             </div>
         </template>
         

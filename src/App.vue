@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch, computed } from 'vue';
 
 const mapRef = ref(null)
 const lngRef = ref(105.8522308815123)
@@ -13,8 +13,55 @@ const modelRef = ref(null)
 const configRef = ref("manual")
 
 const arrLogPlane = ref([])
-const disableBtnMoPhong = ref(true)
+const showPlayLogUAV = ref(false)
 const lineRef = ref(null)
+
+const currentIndex = ref(0);
+const isPlaying = ref(false);
+const speed = ref(1); // Tốc độ phát (1x, 2x, 4x...)
+const interval = ref(null);
+const currentTimeMs = computed(() => arrLogPlane.value[currentIndex.value]?.time_ms || 0);
+const totalTimeMs = computed(() => arrLogPlane.value[arrLogPlane.value.length - 1]?.time_ms || 1);
+const modelPlaneLogRef = ref(null)
+
+// Hàm bắt đầu playback
+const startPlayback = () => {
+  isPlaying.value = true;
+  interval.value = setInterval(() => {
+    if (currentIndex.value < arrLogPlane.value.length - 1) {
+      currentIndex.value++;
+      onAddModelAirplane();
+    } else {
+      stopPlayback();
+    }
+  }, 1000 / speed.value);
+};
+// Hàm dừng playback
+const stopPlayback = () => {
+  isPlaying.value = false;
+  clearInterval(interval.value);
+};
+// Hàm tua tới (next frame)
+const nextFrame = () => {
+  if (currentIndex.value < arrLogPlane.value.length - 1) {
+    currentIndex.value++;
+    onAddModelAirplane();
+  }
+};
+
+// Hàm tua lui (previous frame)
+const prevFrame = () => {
+  if (currentIndex.value > 0) {
+    currentIndex.value--;
+    onAddModelAirplane();
+  }
+};
+// Khi người dùng thay đổi vị trí slider
+watch(currentIndex, () => {
+  if (currentIndex.value >= arrLogPlane.value.length) {
+    stopPlayback();
+  }
+});
 
 onMounted(() => {
   mapboxgl.accessToken = 'pk.eyJ1IjoiZHV5ZGMiLCJhIjoiY2t2djUxZTl3MDFrNDJvbHU2eXd1YmkwdyJ9.EJMYZxWRlMshYpLlSEOmmg';
@@ -89,10 +136,9 @@ function onApplyConfig(){
 function onChangeFileLog(evt){
     let file = evt.target.files[0];
     const reader = new FileReader();
-    disableBtnMoPhong.value = true;
+    showPlayLogUAV.value = false;
     reader.onload = function(event){
         const lines = event.target.result.split(/\r?\n/);
-        let arrByte = []
         lines.forEach((line, index) => {
             if(line.includes("*T02:")){
                 const match = line.match(/\*T02:\s*(.*)/);
@@ -127,7 +173,9 @@ function onChangeFileLog(evt){
                 }
             }
         });
-        disableBtnMoPhong.value = false;
+        showPlayLogUAV.value = true;
+        onAddLayerLine();
+        onAddModelAirplane();
     }
     reader.readAsText(file);
 }
@@ -157,15 +205,100 @@ function radianToDegree(radian) {
 }
 
 
-function onApplyFileLog(){
-    console.log("Bắt đầu mô phỏng");
-    console.log(arrLogPlane.value);
-    if(mapRef.value.getLayer('custom-threebox-model')){
-        mapRef.value.removeLayer('custom-threebox-model');
-        tb.remove(modelRef.value);
+function onAddLayerLine(){
+    let elevation = [];
+    let coordinates = [];
+    for(let i = 0; i < arrLogPlane.value.length; i++){
+        let item = arrLogPlane.value[i];
+        elevation.push(item['elevator']);
+        coordinates.push([item['lng'], item['lat']])
     }
-    addLayerLinePlane();
+    let feature = {
+        'type': "Feature",
+        'properties': {
+            'elevation': elevation
+        },
+        'geometry': {
+            'coordinates': coordinates,
+            'type': "LineString"
+        }
+    }
+    if(mapRef.value.getSource('s_line_3d')){
+        mapRef.value.getSource('s_line_3d').setData(feature)
+    }else{
+        mapRef.value.addSource('s_line_3d', {
+            'type': 'geojson',
+            'lineMetrics': true,
+            'data': feature
+        })
+    }
+    if(!mapRef.value.getLayer('l_line_3d')){
+        mapRef.value.addLayer({
+            'id': "l_line_3d",
+            'type': 'line',
+            'source': 's_line_3d',
+            'layout': {
+                'line-z-offset': [
+                    'at',
+                    [
+                        '*',
+                        ['line-progress'],
+                        ['-', ['length', ['get', 'elevation']], 1]
+                    ],
+                    ['get', 'elevation']
+                ],
+                'line-elevation-reference': 'sea'
+            },
+            'paint': {
+                'line-emissive-strength': 1.0,
+                'line-width': 10,
+                'line-color': 'royalblue'
+            }
+        })
+    }
+    mapRef.value.flyTo({
+        center: [arrLogPlane.value[0]['lng'], arrLogPlane.value[0]['lat']]
+    })
 }
+
+function onAddLayerPlaneLogByConfig(lng, lat, doCao, roll, pitch, yaw){
+    mapRef.value.addLayer({
+        id: 'custom-model-plane-log',
+        type: 'custom',
+        renderingMode: '3d',
+        onAdd: function () {
+            const options = {
+                obj: '/file-1571059202690.glb', //./public/file-1571059202690.glb
+                type: 'gltf',
+                scale: 15,
+                units: 'meters',
+                anchor: 'center',
+                bbox: false
+            };
+
+            tb.loadObj(options, (model) => {
+                model.setCoords([lng, lat, doCao]);
+                model.setRotation({ x: pitch, y: yaw, z: roll});
+                modelPlaneLogRef.value = model;
+                tb.add(model);
+            });
+        },
+
+        render: function () {
+            tb.update();
+        }
+    });
+}
+
+function onAddModelAirplane(){
+    if(mapRef.value.getLayer('custom-model-plane-log')){
+        mapRef.value.removeLayer('custom-model-plane-log');
+        tb.remove(modelPlaneLogRef.value);
+    }
+    let itemActive = arrLogPlane.value[currentIndex.value];
+    onAddLayerPlaneLogByConfig(itemActive['lng'], itemActive['lat'], itemActive['elevator'], itemActive['roll'], itemActive['pitch'], itemActive['yaw'],);
+}
+
 
 function addLayerLinePlane(){
     let flightPlane = {
@@ -225,12 +358,46 @@ function addLayerLinePlane(){
         <template v-if="configRef == 'file_log'">
             <label class="label_t">Chọn tệp nhật ký bay</label>
             <input type="file" id="log" name="log" accept=".txt" @change="onChangeFileLog"/>
-            <div style="width: 100%;margin-top: 15px;display: flex;justify-content: end;">
-                <button @click="onApplyFileLog()" :disabled="disableBtnMoPhong">Mô phỏng</button>
-            </div>
+            <div class="playback-container" v-show="showPlayLogUAV">
+                    <!-- Thanh thời gian -->
+                    <div class="timeline">
+                    <span>{{ currentTimeMs }} ms</span>
+                    <input type="range" min="0" :max="arrLogPlane.length - 1" v-model="currentIndex" />
+                    <span>{{ totalTimeMs }} ms</span>
+                    </div>
+
+                    <!-- Nút điều khiển -->
+                    <div class="controls">
+                    <button @click="prevFrame">⏮</button>
+                    <button @click="isPlaying ? stopPlayback() : startPlayback()">
+                        {{ isPlaying ? "⏸ Pause" : "▶ Play" }}
+                    </button>
+                    <button @click="nextFrame">⏭</button>
+
+                    <label>
+                        Speed:
+                        <select v-model="speed">
+                        <option :value="1">1x</option>
+                        <option :value="2">2x</option>
+                        <option :value="4">4x</option>
+                        </select>
+                    </label>
+                    </div>
+
+                    <!-- Hiển thị thông tin UAV -->
+                    <div class="info">
+                        <p><strong>Time:</strong> {{ currentTimeMs }} ms</p>
+                        <p><strong>Lng:</strong> {{ arrLogPlane[currentIndex]?.lng }}</p>
+                        <p><strong>Lat:</strong> {{ arrLogPlane[currentIndex]?.lat }}</p>
+                        <p><strong>elevator:</strong> {{ arrLogPlane[currentIndex]?.elevator }}</p>
+                        <p><strong>Yaw:</strong> {{ arrLogPlane[currentIndex]?.yaw }}</p>
+                        <p><strong>Roll:</strong> {{ arrLogPlane[currentIndex]?.roll }}</p>
+                        <p><strong>Pitch:</strong> {{ arrLogPlane[currentIndex]?.pitch }}</p>
+                    </div>
+                </div>
         </template>
-        
     </div>
+    
 </div>
 </template>
 
@@ -244,5 +411,54 @@ function addLayerLinePlane(){
     display: flex;
     margin-bottom: 10px;
     align-items: center;
+}
+.playback-container {
+  text-align: center;
+  margin-top: 15px;
+}
+
+.timeline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.controls {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+button {
+  background: #ff9800;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  color: white;
+  font-size: 14px;
+}
+
+button:hover {
+  background: #e68900;
+}
+
+input[type="range"] {
+  width: 70%;
+}
+
+.info {
+  background: #292929;
+  padding: 10px;
+  border-radius: 5px;
+  text-align: left;
+  font-size: 14px;
+  color: #fff;
+}
+
+.info p {
+  margin: 5px 0;
 }
 </style>

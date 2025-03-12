@@ -6,7 +6,7 @@ const lngRef = ref(105.8522308815123)
 const latRef = ref(21.027864986832427)
 const doCaoRef = ref(100)
 const rollRef = ref(0)
-const pitchRef = ref(90)
+const pitchRef = ref(0)
 const yallRef = ref(180)
 const modelRef = ref(null)
 
@@ -18,7 +18,7 @@ const lineRef = ref(null)
 
 const currentIndex = ref(0);
 const isPlaying = ref(false);
-const speed = ref(1); // Tốc độ phát (1x, 2x, 4x...)
+const speed = ref(4); // Tốc độ phát (1x, 2x, 4x...)
 const interval = ref(null);
 const currentTimeMs = computed(() => arrLogPlane.value[currentIndex.value]?.time_ms || 0);
 const totalTimeMs = computed(() => arrLogPlane.value[arrLogPlane.value.length - 1]?.time_ms || 1);
@@ -104,7 +104,7 @@ function onAddLayerByConfig(lng, lat, doCao, roll, pitch, yaw){
 
             tb.loadObj(options, (model) => {
                 model.setCoords([lng, lat, doCao]);
-                model.setRotation({ x: pitch, y: yaw, z: roll});
+                model.setRotation({ x: pitch + 90, y: yaw, z: roll});
                 modelRef.value = model;
                 tb.add(model);
             });
@@ -252,7 +252,7 @@ function onAddLayerLine(){
             'paint': {
                 'line-emissive-strength': 1.0,
                 'line-width': 10,
-                'line-color': 'royalblue'
+                'line-color': 'red'
             }
         })
     }
@@ -278,7 +278,7 @@ function onAddLayerPlaneLogByConfig(lng, lat, doCao, roll, pitch, yaw){
 
             tb.loadObj(options, (model) => {
                 model.setCoords([lng, lat, doCao]);
-                model.setRotation({ x: pitch, y: yaw, z: roll});
+                model.setRotation({ x: pitch + 90, y: yaw + 90, z: roll});
                 modelPlaneLogRef.value = model;
                 tb.add(model);
             });
@@ -380,6 +380,9 @@ function addLayerLinePlane(){
                         <option :value="1">1x</option>
                         <option :value="2">2x</option>
                         <option :value="4">4x</option>
+                        <option :value="6">6x</option>
+                        <option :value="8">8x</option>
+                        <option :value="12">12x</option>
                         </select>
                     </label>
                     </div>

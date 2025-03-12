@@ -23,6 +23,7 @@ const interval = ref(null);
 const currentTimeMs = computed(() => arrLogPlane.value[currentIndex.value]?.time_ms || 0);
 const totalTimeMs = computed(() => arrLogPlane.value[arrLogPlane.value.length - 1]?.time_ms || 1);
 const modelPlaneLogRef = ref(null)
+const isFocusPlane = ref(true)
 
 // Hàm bắt đầu playback
 const startPlayback = () => {
@@ -31,6 +32,7 @@ const startPlayback = () => {
     if (currentIndex.value < arrLogPlane.value.length - 1) {
       currentIndex.value++;
       onAddModelAirplane();
+      onViewMapByPlane();
     } else {
       stopPlayback();
     }
@@ -46,6 +48,7 @@ const nextFrame = () => {
   if (currentIndex.value < arrLogPlane.value.length - 1) {
     currentIndex.value++;
     onAddModelAirplane();
+    onViewMapByPlane();
   }
 };
 
@@ -54,6 +57,7 @@ const prevFrame = () => {
   if (currentIndex.value > 0) {
     currentIndex.value--;
     onAddModelAirplane();
+    onViewMapByPlane();
   }
 };
 // Khi người dùng thay đổi vị trí slider
@@ -174,7 +178,7 @@ function onChangeFileLog(evt){
             }
         });
         showPlayLogUAV.value = true;
-        onAddLayerLine();
+        onAddLine();
         onAddModelAirplane();
     }
     reader.readAsText(file);
@@ -204,63 +208,6 @@ function radianToDegree(radian) {
     return radian * (180 / Math.PI);
 }
 
-
-function onAddLayerLine(){
-    let elevation = [];
-    let coordinates = [];
-    for(let i = 0; i < arrLogPlane.value.length; i++){
-        let item = arrLogPlane.value[i];
-        elevation.push(item['elevator']);
-        coordinates.push([item['lng'], item['lat']])
-    }
-    let feature = {
-        'type': "Feature",
-        'properties': {
-            'elevation': elevation
-        },
-        'geometry': {
-            'coordinates': coordinates,
-            'type': "LineString"
-        }
-    }
-    if(mapRef.value.getSource('s_line_3d')){
-        mapRef.value.getSource('s_line_3d').setData(feature)
-    }else{
-        mapRef.value.addSource('s_line_3d', {
-            'type': 'geojson',
-            'lineMetrics': true,
-            'data': feature
-        })
-    }
-    if(!mapRef.value.getLayer('l_line_3d')){
-        mapRef.value.addLayer({
-            'id': "l_line_3d",
-            'type': 'line',
-            'source': 's_line_3d',
-            'layout': {
-                'line-z-offset': [
-                    'at',
-                    [
-                        '*',
-                        ['line-progress'],
-                        ['-', ['length', ['get', 'elevation']], 1]
-                    ],
-                    ['get', 'elevation']
-                ],
-                'line-elevation-reference': 'sea'
-            },
-            'paint': {
-                'line-emissive-strength': 1.0,
-                'line-width': 10,
-                'line-color': 'red'
-            }
-        })
-    }
-    mapRef.value.flyTo({
-        center: [arrLogPlane.value[0]['lng'], arrLogPlane.value[0]['lat']]
-    })
-}
-
 function onAddLayerPlaneLogByConfig(lng, lat, doCao, roll, pitch, yaw){
     mapRef.value.addLayer({
         id: 'custom-model-plane-log',
@@ -270,7 +217,7 @@ function onAddLayerPlaneLogByConfig(lng, lat, doCao, roll, pitch, yaw){
             const options = {
                 obj: '/file-1571059202690.glb', //./public/file-1571059202690.glb
                 type: 'gltf',
-                scale: 15,
+                scale: 50,
                 units: 'meters',
                 anchor: 'center',
                 bbox: false
@@ -278,7 +225,10 @@ function onAddLayerPlaneLogByConfig(lng, lat, doCao, roll, pitch, yaw){
 
             tb.loadObj(options, (model) => {
                 model.setCoords([lng, lat, doCao]);
-                model.setRotation({ x: pitch + 90, y: yaw + 90, z: roll});
+                let xTransform = pitch + 90;
+                let yTransform = Math.abs(yaw) - 5
+                let zTransform = roll; 
+                model.setRotation({ x: xTransform, y: yTransform, z: zTransform});
                 modelPlaneLogRef.value = model;
                 tb.add(model);
             });
@@ -290,6 +240,28 @@ function onAddLayerPlaneLogByConfig(lng, lat, doCao, roll, pitch, yaw){
     });
 }
 
+function onAddLine(){
+    if(lineRef.value != null){
+        tb.remove(lineRef.value);
+    }
+    let coordinates = []
+    for(let i = 0; i < arrLogPlane.value.length; i++){
+        let item = arrLogPlane.value[i];
+        let coordinate = [item['lng'], item['lat'], item['elevator']]
+        coordinates.push(coordinate);
+    }
+    let lineModel = tb.line({
+        geometry: coordinates,
+        width: 5,
+		color: 'red'
+    })
+    lineRef.value = lineModel;
+    tb.add(lineModel);
+    mapRef.value.flyTo({
+        center: [arrLogPlane.value[0]['lng'], arrLogPlane.value[0]['lat']]
+    })
+}
+
 function onAddModelAirplane(){
     if(mapRef.value.getLayer('custom-model-plane-log')){
         mapRef.value.removeLayer('custom-model-plane-log');
@@ -299,32 +271,22 @@ function onAddModelAirplane(){
     onAddLayerPlaneLogByConfig(itemActive['lng'], itemActive['lat'], itemActive['elevator'], itemActive['roll'], itemActive['pitch'], itemActive['yaw'],);
 }
 
-
-function addLayerLinePlane(){
-    let flightPlane = {
-        'type': "Feature",
-        'geometry': {
-            'coordinates': []
-        },
-        'properties': {}
+function onViewMapByPlane(){
+    if(isFocusPlane.value){
+        if(arrLogPlane.value[currentIndex.value - 50] != null && arrLogPlane.value[currentIndex.value + 250] != null){
+            let coordinate_last = [arrLogPlane.value[currentIndex.value - 50]['lng'], arrLogPlane.value[currentIndex.value - 50]['lat']];
+            let coordinate_next = [arrLogPlane.value[currentIndex.value + 250]['lng'], arrLogPlane.value[currentIndex.value + 250]['lat']];
+            let coordinateActive = [arrLogPlane.value[currentIndex.value]['lng'], arrLogPlane.value[currentIndex.value]['lat']];
+            var bearing = turf.bearing(
+                turf.point(coordinate_last),
+                turf.point(coordinate_next)
+            )
+            mapRef.value.panTo(coordinateActive, { animate: true, essential: true, curve: 1.42, duration: 1000 / speed.value, pitch: 45, bearing: bearing })
+        }
+        
     }
-    let arrLineTurf = [];
-    for(let i = 0; i < arrLogPlane.value.length; i++){
-        let item = arrLogPlane.value[i];
-        flightPlane.geometry.coordinates.push([item['lng'], item['lat'], item['elevator']])
-        arrLineTurf.push([item['lng'], item['lat']])
-    }
-    var lineTurf = turf.lineString(arrLineTurf);
-    var bbox = turf.bbox(lineTurf);
-    console.log(flightPlane)
-    lineRef.value = tb.line({
-        geometry: flightPlane.geometry.coordinates,
-        width: 50,
-        color: 'red'
-    })
-    tb.add(lineRef.value);
-    mapRef.value.fitBounds(bbox)
 }
+
 </script>
 
 <template>
@@ -368,23 +330,29 @@ function addLayerLinePlane(){
 
                     <!-- Nút điều khiển -->
                     <div class="controls">
-                    <button @click="prevFrame">⏮</button>
-                    <button @click="isPlaying ? stopPlayback() : startPlayback()">
-                        {{ isPlaying ? "⏸ Pause" : "▶ Play" }}
-                    </button>
-                    <button @click="nextFrame">⏭</button>
-
-                    <label>
-                        Speed:
-                        <select v-model="speed">
-                        <option :value="1">1x</option>
-                        <option :value="2">2x</option>
-                        <option :value="4">4x</option>
-                        <option :value="6">6x</option>
-                        <option :value="8">8x</option>
-                        <option :value="12">12x</option>
-                        </select>
-                    </label>
+                        <button @click="prevFrame">⏮</button>
+                        <button @click="isPlaying ? stopPlayback() : startPlayback()">
+                            {{ isPlaying ? "⏸ Pause" : "▶ Play" }}
+                        </button>
+                        <button @click="nextFrame">⏭</button>
+                        <div style="display: flex;align-items: center;">
+                            <label>
+                                Speed:
+                                <select v-model="speed">
+                                <option :value="1">1x</option>
+                                <option :value="2">2x</option>
+                                <option :value="4">4x</option>
+                                <option :value="6">6x</option>
+                                <option :value="8">8x</option>
+                                <option :value="12">12x</option>
+                                <option :value="16">16x</option>
+                                </select>
+                            </label>
+                            <div style="display: flex;align-items: center;margin-left: 6px;">
+                                <input type="checkbox" id="myCheckbox" name="myCheckbox" v-model="isFocusPlane"> Focus
+                            </div>
+                        </div>
+                        
                     </div>
 
                     <!-- Hiển thị thông tin UAV -->

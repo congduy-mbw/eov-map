@@ -291,7 +291,7 @@ function onViewMapByPlane(){
 
 <template>
 <div style="width: 100vw;height:100vh; position: relative;" id="map">
-    <div style="width: 300px; position: absolute;top: 10px;left: 25px; z-index: 10;background-color: #fff; padding: 20px;">
+    <div style="width: 320px; position: absolute;top: 10px;left: 25px; z-index: 10;background-color: #fff; padding: 20px;">
         <label class="label_t">Chế độ nhập dữ liệu</label><br>
         <div class="type_display">
             <input type="radio" id="manual" name="config" value="manual" v-model="configRef">

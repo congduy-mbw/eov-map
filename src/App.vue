@@ -87,9 +87,22 @@ onMounted(() => {
     ));
 
     mapRef.value.on('style.load', () => {
+        onAddLayerTerrain()
         onAddLayerByConfig(lngRef.value, latRef.value, doCaoRef.value, rollRef.value, pitchRef.value, yallRef.value)
   });
 })
+
+function onAddLayerTerrain(){
+    if(!mapRef.value.getSource('s_mapbox_dem')){
+        mapRef.value.addSource('s_mapbox_dem', {
+            'type': 'raster-dem',
+            'url': 'mapbox://mapbox.mapbox-terrain-dem-v1',
+            'tileSize': 512,
+            'maxzoom': 14
+        })
+        mapRef.value.setTerrain({ 'source': 's_mapbox_dem', 'exaggeration': 1.5 })
+    }
+}
 
 function onAddLayerByConfig(lng, lat, doCao, roll, pitch, yaw){
     mapRef.value.addLayer({
